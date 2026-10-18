@@ -72,6 +72,14 @@
                 pkgs.curl
               ]
               ++ packages;
+              allowedHostPorts = [
+                8080
+              ];
+              extraEnv = {
+                ANTHROPIC_BASE_URL = "http://localhost:8080";
+                ANTHROPIC_AUTH_TOKEN = "1";
+                CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS = "1";
+              };
               allowedDomains = box.agentDomains // {
                 "crates.io" = "*";
                 "index.crates.io" = "*";
