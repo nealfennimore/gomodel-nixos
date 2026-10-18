@@ -50,6 +50,8 @@ pkgs.testers.runNixOSTest {
     sqlite = {
       imports = [ common ];
       services.gomodel.metrics.enable = true;
+      services.gomodel.encryption.keyFile = "/etc/gomodel-test-encryption-key";
+      environment.etc."gomodel-test-encryption-key".text = "test-encryption-key-not-for-production";
     };
 
     postgres = {
@@ -107,6 +109,11 @@ pkgs.testers.runNixOSTest {
         sqlite.succeed("test -s /var/lib/gomodel/data/gomodel.db")
         sqlite.succeed("test -L /var/lib/gomodel/config/config.yaml")
         sqlite.succeed("gomodel --version | grep -F 'gomodel ${pkgs.gomodel.version}'")
+
+    with subtest("Encryption at rest"):
+        sqlite.succeed("journalctl -u gomodel.service | grep 'created the data key for encrypting secrets at rest' > /dev/null")
+        # The key is a credential, not a value in the unit or the store.
+        sqlite.fail("systemctl cat gomodel.service | grep test-encryption-key-not-for-production > /dev/null")
 
     with subtest("Prometheus metrics"):
         # Metrics are public: no master key on this request.

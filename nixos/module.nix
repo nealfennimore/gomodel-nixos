@@ -19,6 +19,16 @@ let
   useSettings = cfg.configFile == null && cfg.settings != { };
   hasConfigFile = cfg.configFile != null || useSettings;
 
+  credentialDir = "/run/credentials/gomodel.service";
+  encryptionCredentials =
+    lib.optionalAttrs (cfg.encryption.keyFile != null) {
+      encryption-key = cfg.encryption.keyFile;
+    }
+    // lib.optionalAttrs (cfg.encryption.previousKeyFile != null) {
+      encryption-key-previous = cfg.encryption.previousKeyFile;
+    };
+  allCredentials = cfg.credentials // encryptionCredentials;
+
   # config/config.yaml in the state directory links here.
   configLink = if cfg.configFile != null then cfg.configFile else "/etc/gomodel/config.yaml";
 in
@@ -122,6 +132,35 @@ in
       '';
     };
 
+    encryption = {
+      keyFile = lib.mkOption {
+        type = lib.types.nullOr lib.types.str;
+        default = null;
+        example = "/run/secrets/gomodel-encryption-key";
+        description = ''
+          File with the key that encrypts dashboard-managed secrets in the
+          database (`GOMODEL_ENCRYPTION_KEY`). Generate it with
+          `openssl rand -base64 32`. systemd loads the file as a credential,
+          so the key never goes into the Nix store.
+
+          If you lose the key, the encrypted secrets are lost. Without the
+          key, GoModel does not start against a database with encrypted
+          secrets. If the file does not exist, GoModel does not start.
+          See <https://gomodel.enterpilot.io/docs/advanced/encryption-at-rest>.
+        '';
+      };
+
+      previousKeyFile = lib.mkOption {
+        type = lib.types.nullOr lib.types.str;
+        default = null;
+        example = "/run/secrets/gomodel-encryption-key-old";
+        description = ''
+          File with the old key during a key rotation
+          (`GOMODEL_ENCRYPTION_KEY_PREVIOUS`). Remove it after the rotation.
+        '';
+      };
+    };
+
     metrics = {
       enable = lib.mkEnableOption ''
         the Prometheus metrics endpoint. The endpoint does not need
@@ -182,6 +221,14 @@ in
           !cfg.metrics.enable || (lib.hasPrefix "/" p && !reserved "/v1" && !reserved "/p");
         message = "services.gomodel.metrics.path must start with \"/\" and must not be under /v1 or /p.";
       }
+      {
+        assertion = cfg.encryption.previousKeyFile == null || cfg.encryption.keyFile != null;
+        message = "services.gomodel.encryption.previousKeyFile needs services.gomodel.encryption.keyFile.";
+      }
+      {
+        assertion = lib.all (name: !(cfg.credentials ? ${name})) (lib.attrNames encryptionCredentials);
+        message = "services.gomodel.credentials must not use the names encryption-key or encryption-key-previous. services.gomodel.encryption uses them.";
+      }
     ];
 
     services.gomodel.environment = lib.mkMerge [
@@ -195,6 +242,12 @@ in
       }
       (lib.mkIf cfg.disableVersionCheck {
         GOMODEL_VERSION_CHECK_ENABLED = lib.mkDefault "false";
+      })
+      (lib.mkIf (cfg.encryption.keyFile != null) {
+        GOMODEL_ENCRYPTION_KEY = "\${file:${credentialDir}/encryption-key}";
+      })
+      (lib.mkIf (cfg.encryption.previousKeyFile != null) {
+        GOMODEL_ENCRYPTION_KEY_PREVIOUS = "\${file:${credentialDir}/encryption-key-previous}";
       })
       (lib.mkIf cfg.metrics.enable {
         METRICS_ENABLED = "true";
@@ -275,7 +328,7 @@ in
           lib.optional cfg.redis.createLocally
             config.services.redis.servers.${redisName}.group;
         EnvironmentFile = cfg.environmentFiles;
-        LoadCredential = lib.mapAttrsToList (name: path: "${name}:${path}") cfg.credentials;
+        LoadCredential = lib.mapAttrsToList (name: path: "${name}:${path}") allCredentials;
 
         StateDirectory = "gomodel";
         StateDirectoryMode = "0750";

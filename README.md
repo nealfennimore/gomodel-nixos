@@ -104,6 +104,8 @@ Then configure the service:
 | `environment` | `{ }` | Environment variables. See the upstream `.env.template` for the names. |
 | `environmentFiles` | `[ ]` | systemd environment files, for secrets. |
 | `credentials` | `{ }` | Secret files for systemd `LoadCredential`. |
+| `encryption.keyFile` | `null` | A key file that encrypts dashboard-managed secrets in the database. |
+| `encryption.previousKeyFile` | `null` | The old key file during a key rotation. |
 | `metrics.enable` | `false` | Enables the Prometheus endpoint. |
 | `metrics.path` | `/metrics` | The HTTP path of the Prometheus endpoint. |
 | `database.createLocally` | `false` | Creates a local PostgreSQL database and sets `STORAGE_TYPE=postgresql`. |
@@ -120,6 +122,30 @@ Use one of these two methods:
 2. Add a secret file to `credentials`. Write `${file:/run/credentials/gomodel.service/<name>}` in `settings`.
 
 In a Nix string, write `\${` to get a literal `${`.
+
+### Encryption at rest
+
+GoModel keeps the secrets that you add in the dashboard in its database. Examples are provider keys and MCP server headers. If no encryption key is set, these secrets are in plaintext.
+
+To encrypt them, do these steps:
+
+1. Make a key file. Use your secret manager, for example sops-nix or agenix.
+
+   ```sh
+   openssl rand -base64 32 > /run/secrets/gomodel-encryption-key
+   ```
+
+2. Set the option:
+
+   ```nix
+   services.gomodel.encryption.keyFile = "/run/secrets/gomodel-encryption-key";
+   ```
+
+systemd loads the file as a credential. The key does not go into the Nix store or the unit file. Use a string path, not a Nix path literal.
+
+Do not lose the key. Without it, the encrypted secrets are lost, and GoModel does not start against the database. Keep the key separate from the database backups.
+
+The key does not encrypt secrets that are already in the database. GoModel encrypts each one when you save it again. To change the key, set `encryption.previousKeyFile` to the old key and `encryption.keyFile` to the new key. Remove `previousKeyFile` after the rotation.
 
 ### Files and directories
 
@@ -219,6 +245,7 @@ On each machine, the test makes sure that:
 - A chat completion goes through to a mock provider, with the API key from `credentials`.
 - The dashboard loads.
 - The metrics endpoint answers only on the machine that enables it.
+- The encryption key loads from a credential, and it is not in the unit file.
 - `systemctl reload` keeps the same process.
 
 The client connects through the firewall.
