@@ -84,10 +84,9 @@ Then configure the service:
       };
     };
 
-    environment = {
-      LOG_LEVEL = "info";
-      METRICS_ENABLED = "true";
-    };
+    metrics.enable = true;
+
+    environment.LOG_LEVEL = "info";
   };
 }
 ```
@@ -105,6 +104,8 @@ Then configure the service:
 | `environment` | `{ }` | Environment variables. See the upstream `.env.template` for the names. |
 | `environmentFiles` | `[ ]` | systemd environment files, for secrets. |
 | `credentials` | `{ }` | Secret files for systemd `LoadCredential`. |
+| `metrics.enable` | `false` | Enables the Prometheus endpoint. |
+| `metrics.path` | `/metrics` | The HTTP path of the Prometheus endpoint. |
 | `database.createLocally` | `false` | Creates a local PostgreSQL database and sets `STORAGE_TYPE=postgresql`. |
 | `redis.createLocally` | `false` | Starts a local Redis on a Unix socket and sets `REDIS_URL`. |
 | `disableVersionCheck` | `true` | Sets `GOMODEL_VERSION_CHECK_ENABLED=false`. Nix controls the updates. |
@@ -155,6 +156,23 @@ systemctl reload gomodel
 
 GoModel connects to PostgreSQL through `/run/postgresql` with peer authentication. Redis listens on `/run/redis-gomodel/redis.sock`. The local Redis instance holds the model registry cache. To use it for the response cache too, set `cache.response.simple.redis.url = "\${REDIS_URL}"` in `settings`.
 
+### Prometheus metrics
+
+Set `metrics.enable = true` to serve metrics at `/metrics`. The endpoint does not need authentication, even if you set a master key.
+
+Do not set `openFirewall = true` if the metrics must stay private. All clients that can reach the port can read the endpoint. Let Prometheus scrape on the local host, or use a reverse proxy that limits access to the path.
+
+```nix
+{
+  services.prometheus.scrapeConfigs = [
+    {
+      job_name = "gomodel";
+      static_configs = [ { targets = [ "127.0.0.1:8080" ]; } ];
+    }
+  ];
+}
+```
+
 ### Network exposure
 
 GoModel listens on all network interfaces. It has no option for a bind address. Keep `openFirewall = false` if a reverse proxy on the same host is the only client. If the proxy sends `X-Forwarded-For`, set `SERVER_TRUSTED_PROXIES` in `environment`.
@@ -200,6 +218,7 @@ On each machine, the test makes sure that:
 - A request without the master key gets HTTP 401.
 - A chat completion goes through to a mock provider, with the API key from `credentials`.
 - The dashboard loads.
+- The metrics endpoint answers only on the machine that enables it.
 - `systemctl reload` keeps the same process.
 
 The client connects through the firewall.

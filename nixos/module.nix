@@ -122,6 +122,23 @@ in
       '';
     };
 
+    metrics = {
+      enable = lib.mkEnableOption ''
+        the Prometheus metrics endpoint. The endpoint does not need
+        authentication, even if a master key is set. All clients that can
+        reach {option}`services.gomodel.port` can read it'';
+
+      path = lib.mkOption {
+        type = lib.types.str;
+        default = "/metrics";
+        example = "/internal/metrics";
+        description = ''
+          HTTP path of the metrics endpoint (`METRICS_ENDPOINT`). The path must
+          not be under `/v1` or `/p`, because the API uses these prefixes.
+        '';
+      };
+    };
+
     database.createLocally = lib.mkOption {
       type = lib.types.bool;
       default = false;
@@ -154,6 +171,19 @@ in
   };
 
   config = lib.mkIf cfg.enable {
+    assertions = [
+      {
+        # GoModel silently falls back to /metrics for these paths.
+        assertion =
+          let
+            p = cfg.metrics.path;
+            reserved = prefix: p == prefix || lib.hasPrefix "${prefix}/" p;
+          in
+          !cfg.metrics.enable || (lib.hasPrefix "/" p && !reserved "/v1" && !reserved "/p");
+        message = "services.gomodel.metrics.path must start with \"/\" and must not be under /v1 or /p.";
+      }
+    ];
+
     services.gomodel.environment = lib.mkMerge [
       {
         PORT = toString cfg.port;
@@ -165,6 +195,10 @@ in
       }
       (lib.mkIf cfg.disableVersionCheck {
         GOMODEL_VERSION_CHECK_ENABLED = lib.mkDefault "false";
+      })
+      (lib.mkIf cfg.metrics.enable {
+        METRICS_ENABLED = "true";
+        METRICS_ENDPOINT = cfg.metrics.path;
       })
       (lib.mkIf cfg.database.createLocally {
         STORAGE_TYPE = lib.mkDefault "postgresql";
