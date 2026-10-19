@@ -1,7 +1,6 @@
 {
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
-    agentbox.url = "github:nealfennimore/agent-sandbox";
     flake-utils.url = "github:numtide/flake-utils";
   };
 
@@ -9,7 +8,6 @@
     {
       self,
       nixpkgs,
-      agentbox,
       flake-utils,
     }:
     let
@@ -41,16 +39,9 @@
         (
           system:
           let
-            claudeCodeOverlay = final: prev: {
-              claude-code = final.callPackage ./overlays/claude/overlay.nix { };
-            };
             pkgs = import nixpkgs {
               inherit system;
-              config.allowUnfree = true;
-              overlays = [
-                claudeCodeOverlay
-                gomodelOverlay
-              ];
+              overlays = [ gomodelOverlay ];
             };
             packages = [
               pkgs.go
@@ -63,38 +54,6 @@
               pkgs.nixfmt-rfc-style
               pkgs.python3
             ];
-            box = agentbox.lib.${system};
-            claude = box.mkClaudeSandbox {
-              pkg = pkgs.claude-code;
-              extraPackages = [
-                pkgs.ripgrep
-                pkgs.jq
-                pkgs.curl
-              ]
-              ++ packages;
-              allowedHostPorts = [
-                8080
-              ];
-              extraEnv = {
-                ANTHROPIC_BASE_URL = "http://localhost:8080";
-                ANTHROPIC_AUTH_TOKEN = "1";
-                CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS = "1";
-              };
-              allowedDomains = box.agentDomains // {
-                "crates.io" = "*";
-                "index.crates.io" = "*";
-                "static.crates.io" = "*";
-                "enterpilot.io" = "*";
-                "proxy.golang.org" = "*";
-                "sum.golang.org" = "*";
-                "storage.googleapis.com" = "*";
-                "registry.npmjs.org" = "*";
-                "codeload.github.com" = "*";
-                "objects.githubusercontent.com" = "*";
-                "cache.nixos.org" = "*";
-                "channels.nixos.org" = "*";
-              };
-            };
           in
           {
             packages = {
@@ -117,10 +76,7 @@
             formatter = pkgs.nixfmt-rfc-style;
 
             devShells.default = pkgs.mkShell {
-              packages = [
-                claude
-              ]
-              ++ packages;
+              inherit packages;
 
               shellHook = "";
             };
