@@ -2,7 +2,7 @@
 
 This flake packages [GoModel](https://github.com/ENTERPILOT/GoModel), an OpenAI-compatible AI gateway, for Nix. It also gives a NixOS module, `services.gomodel`, and a NixOS VM test.
 
-The packaged version is 0.1.103. The pins are in `pkgs/gomodel/sources.json`.
+The packaged version is 0.2.4. The pins are in `pkgs/gomodel/sources.json`.
 
 ## Contents
 
@@ -12,6 +12,7 @@ The packaged version is 0.1.103. The pins are in `pkgs/gomodel/sources.json`.
 | `pkgs/gomodel/dashboard.nix` | The Svelte admin dashboard, built with `buildNpmPackage`. |
 | `pkgs/gomodel/sources.json` | The version, commit, and hashes. |
 | `pkgs/gomodel/update.sh` | The script that bumps `sources.json` to a new release. |
+| `overlays/go/overlay.nix` | Pins a newer Go 1.27 patch release than nixpkgs has. The pin is in `overlays/go/sources.json`. |
 | `nixos/module.nix` | The `services.gomodel` NixOS module. |
 | `nixos/tests/gomodel.nix` | The NixOS VM test. |
 
@@ -23,7 +24,9 @@ The packaged version is 0.1.103. The pins are in `pkgs/gomodel/sources.json`.
 | `packages.<system>.gomodel-swagger` | The binary with `-tags swagger`. Set `SWAGGER_ENABLED=true` to serve `/swagger/index.html`. |
 | `packages.<system>.gomodel-plugins` | The cgo binary for Go shared-object plugins. |
 | `packages.<system>.gomodel-dashboard` | The built dashboard bundle alone. |
-| `overlays.default` | Adds `gomodel` and `gomodel-plugins` to `pkgs`. |
+| `overlays.default` | `overlays.go` and `overlays.gomodel` together. |
+| `overlays.go` | Overrides `go_1_27` if nixpkgs is older than the pin. All Go packages in `pkgs` then use the pinned Go. |
+| `overlays.gomodel` | Adds `gomodel` and `gomodel-plugins` to `pkgs`. |
 | `nixosModules.default` | The `services.gomodel` module. |
 | `checks.<system>.gomodel` | The package build. The build runs the upstream unit tests. |
 | `checks.x86_64-linux.nixos-test` | The VM test. |

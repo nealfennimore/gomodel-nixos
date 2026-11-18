@@ -11,8 +11,13 @@
       flake-utils,
     }:
     let
+      goOverlay = import ./overlays/go/overlay.nix;
       gomodelOverlay = final: prev: {
-        gomodel = final.callPackage ./pkgs/gomodel/package.nix { };
+        # The Go pin applies to gomodel only. Other Go packages keep the
+        # nixpkgs Go.
+        gomodel = final.callPackage ./pkgs/gomodel/package.nix {
+          inherit (final.appendOverlays [ goOverlay ]) buildGo127Module go_1_27;
+        };
         gomodel-plugins = final.gomodel.override { withPlugins = true; };
       };
     in

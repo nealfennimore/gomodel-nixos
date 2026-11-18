@@ -38,6 +38,9 @@ goVersion=$(sed -n 's/^go \([0-9.]*\)$/\1/p' "$work/src/go.mod")
 )
 vendorHash=$(nix hash path "$work/src/vendor")
 
+# Pin Go in the Go overlay if nixpkgs does not have the release in go.mod yet.
+../../overlays/go/update.sh "$goVersion"
+
 jq -n \
   --arg version "$VERSION" --arg rev "$rev" --arg date "$date" \
   --arg hash "$hash" --arg vendorHash "$vendorHash" --arg npmDepsHash "$npmDepsHash" \

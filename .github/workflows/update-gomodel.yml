@@ -94,6 +94,7 @@ jobs:
           draft: ${{ steps.test.outcome != 'success' }}
           add-paths: |
             pkgs/gomodel/sources.json
+            overlays/go/sources.json
             README.md
           body: |
             Updates GoModel from ${{ steps.update.outputs.old }} to ${{ steps.update.outputs.new }}.
