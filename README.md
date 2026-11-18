@@ -227,6 +227,8 @@ nix build .#checks.x86_64-linux.nixos-test -L
 
 If a new release needs a newer Go version, the script shows a warning. Then change `buildGo127Module` and `go_1_27` in `package.nix`.
 
+The workflow `.github/workflows/update-gomodel.yml` does these steps every day at 06:17 UTC. If a new release exists, the workflow opens a pull request on the branch `update/gomodel`. If the build or the VM test fails, the pull request is a draft. To start the workflow manually, run `gh workflow run update-gomodel.yml -f version=0.1.104`.
+
 ## Run the tests
 
 ```sh

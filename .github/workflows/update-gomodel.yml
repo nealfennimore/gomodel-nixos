@@ -1,0 +1,116 @@
+name: Update GoModel
+
+# Checks for a new GoModel release every day. If one exists, the job bumps
+# pkgs/gomodel/sources.json, builds the package, runs the NixOS VM test, and
+# opens a pull request.
+
+on:
+  schedule:
+    - cron: "17 6 * * *"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "GoModel version (empty = latest release)"
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: update-gomodel
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Enable KVM for the NixOS VM test
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - uses: cachix/install-nix-action@v31
+        with:
+          github_access_token: ${{ secrets.GITHUB_TOKEN }}
+          extra_nix_config: |
+            system-features = nixos-test benchmark big-parallel kvm
+
+      - name: Run update script
+        id: update
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          old=$(jq -r .version pkgs/gomodel/sources.json)
+          target="${{ inputs.version }}"
+          if [ -z "$target" ]; then
+            target=$(curl -fsSL -H "Authorization: Bearer $GITHUB_TOKEN" \
+              https://api.github.com/repos/ENTERPILOT/GoModel/releases/latest | jq -r .tag_name)
+          fi
+          target="${target#v}"
+          echo "old=$old" >>"$GITHUB_OUTPUT"
+          echo "new=$target" >>"$GITHUB_OUTPUT"
+
+          if [ "$old" = "$target" ]; then
+            echo "GoModel $old is already the latest release."
+            echo "changed=false" >>"$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          nix develop --command ./pkgs/gomodel/update.sh "$target" 2> >(tee update.log >&2)
+          sed -i "s/The packaged version is [0-9.]*\./The packaged version is $target./" README.md
+          echo "changed=true" >>"$GITHUB_OUTPUT"
+
+          if grep -q WARNING update.log; then
+            echo "go_warning=true" >>"$GITHUB_OUTPUT"
+          fi
+
+      - name: Build the package
+        id: build
+        if: steps.update.outputs.changed == 'true'
+        continue-on-error: true
+        run: nix build .#gomodel -L
+
+      - name: Run the NixOS VM test
+        id: test
+        if: steps.update.outputs.changed == 'true' && steps.build.outcome == 'success'
+        continue-on-error: true
+        run: nix build .#checks.x86_64-linux.nixos-test -L
+
+      - name: Open pull request
+        if: steps.update.outputs.changed == 'true'
+        uses: peter-evans/create-pull-request@v7
+        with:
+          branch: update/gomodel
+          delete-branch: true
+          commit-message: "gomodel: ${{ steps.update.outputs.old }} -> ${{ steps.update.outputs.new }}"
+          title: "gomodel: ${{ steps.update.outputs.old }} -> ${{ steps.update.outputs.new }}"
+          draft: ${{ steps.test.outcome != 'success' }}
+          add-paths: |
+            pkgs/gomodel/sources.json
+            README.md
+          body: |
+            Updates GoModel from ${{ steps.update.outputs.old }} to ${{ steps.update.outputs.new }}.
+
+            Release notes: https://github.com/ENTERPILOT/GoModel/releases/tag/v${{ steps.update.outputs.new }}
+
+            | Check | Result |
+            | --- | --- |
+            | `nix build .#gomodel` | ${{ steps.build.outcome }} |
+            | `nix build .#checks.x86_64-linux.nixos-test` | ${{ steps.test.outcome }} |
+
+            If a check failed, the pull request is a draft. Workflow log: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+            ${{ steps.update.outputs.go_warning == 'true' && '**Warning:** the new release needs a different Go version. Change `buildGo*Module` and `go_*` in `pkgs/gomodel/package.nix`.' || '' }}
+
+      - name: Fail if a check failed
+        if: steps.update.outputs.changed == 'true' && steps.test.outcome != 'success'
+        run: |
+          echo "The build or the VM test failed. The pull request is a draft." >&2
+          exit 1
