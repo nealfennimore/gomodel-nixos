@@ -2,7 +2,7 @@
 
 This flake packages [GoModel](https://github.com/ENTERPILOT/GoModel), an OpenAI-compatible AI gateway, for Nix. It also gives a NixOS module, `services.gomodel`, and a NixOS VM test.
 
-The packaged version is 0.2.5. The pins are in `pkgs/gomodel/sources.json`.
+The packaged version is 0.2.6. The pins are in `pkgs/gomodel/sources.json`.
 
 ## Contents
 
